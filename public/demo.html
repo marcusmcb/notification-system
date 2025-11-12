@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Grade Notifications Demo</title>
+    <style>
+      body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; }
+      .row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+      input, button { font-size: 14px; padding: 8px; }
+      #log { border: 1px solid #ddd; padding: 12px; height: 300px; overflow: auto; background: #fafafa; }
+      .event { margin: 4px 0; }
+      .missed { color: #8B5CF6; }
+      .live { color: #059669; }
+      .sys { color: #6B7280; }
+      small { color: #6B7280; }
+    </style>
+  </head>
+  <body>
+    <h1>Grade Notifications Demo</h1>
+    <p>Connect as a student, publish notifications, and observe live and missed events via SSE.</p>
+
+    <div class="row">
+      <input id="studentId" placeholder="student id (e.g., s1)" value="demo-student" />
+      <button id="connect">Connect</button>
+      <button id="disconnect" disabled>Disconnect</button>
+      <small id="status">disconnected</small>
+    </div>
+
+    <div class="row">
+      <input id="message" placeholder="message" value="New grade posted" style="min-width: 280px;" />
+      <button id="send">Send to this student</button>
+      <button id="sendBatch">Send batch to s1 & s2</button>
+    </div>
+
+    <div class="row">
+      <button id="metrics">Show metrics</button>
+      <pre id="metricsOut" style="margin:0"></pre>
+    </div>
+
+    <div id="log"></div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const log = (msg, cls='sys') => {
+        const div = document.createElement('div');
+        div.className = 'event ' + cls;
+        div.textContent = msg;
+        $('log').appendChild(div);
+        $('log').scrollTop = $('log').scrollHeight;
+      };
+
+      let es = null;
+      const base = location.origin;
+
+      const connect = () => {
+        const id = $('studentId').value.trim();
+        if (!id) return alert('Enter student id');
+        if (es) es.close();
+        es = new EventSource(`${base}/sse?studentId=${encodeURIComponent(id)}`);
+        es.onopen = () => { log(`connected as ${id}`); $('status').textContent = 'connected'; $('connect').disabled = true; $('disconnect').disabled = false; };
+        es.onerror = () => { log('connection error', 'sys'); };
+        es.onmessage = (evt) => {
+          try {
+            const data = JSON.parse(evt.data);
+            log(`${data.type}: ${data.message}`, data.type);
+          } catch (_) {
+            log(`raw: ${evt.data}`);
+          }
+        };
+      };
+
+      const disconnect = () => {
+        if (es) es.close();
+        es = null;
+        $('status').textContent = 'disconnected';
+        $('connect').disabled = false;
+        $('disconnect').disabled = true;
+        log('disconnected');
+      };
+
+      $('connect').onclick = connect;
+      $('disconnect').onclick = disconnect;
+
+      $('send').onclick = async () => {
+        const id = $('studentId').value.trim();
+        const message = $('message').value.trim();
+        if (!id || !message) return alert('Provide student id and message');
+        const res = await fetch(`${base}/publish`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ studentId: id, message }) });
+        const j = await res.json();
+        log(`publish -> ${res.status} ${JSON.stringify(j)}`);
+      };
+
+      $('sendBatch').onclick = async () => {
+        const res = await fetch(`${base}/publish/batch`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notifications: [ { studentId: 's1', message: 'Science grade updated' }, { studentId: 's2', message: 'History grade updated' } ] }) });
+        const j = await res.json();
+        log(`batch -> ${res.status} count=${j.count}`);
+      };
+
+      $('metrics').onclick = async () => {
+        const res = await fetch(`${base}/metrics`);
+        const j = await res.json();
+        $('metricsOut').textContent = JSON.stringify(j, null, 2);
+      };
+    </script>
+  </body>
+  </html>
