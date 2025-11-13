@@ -176,7 +176,6 @@ export const createServer = (): FastifyInstance => {
 		const onClose = () => unregisterConnection(studentId, reply)
 		reply.raw.on('close', onClose)
 		reply.raw.on('end', onClose)
-
 		/* keep the connection open */
 		return
 	})
